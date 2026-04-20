@@ -1,8 +1,33 @@
 import { execFile } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { InstallResult } from "./claude-code.js";
 
 const exec = promisify(execFile);
+
+/**
+ * Write PEPPERMINT_TOKEN to ~/.codex/.env so Codex can read it at runtime.
+ */
+function persistCodexEnvVar(apiKey: string): void {
+  const codexDir = join(homedir(), ".codex");
+  const envPath = join(codexDir, ".env");
+
+  if (!existsSync(codexDir)) {
+    mkdirSync(codexDir, { recursive: true });
+  }
+
+  // Read existing .env and update/add the PEPPERMINT_TOKEN line
+  let content = "";
+  if (existsSync(envPath)) {
+    content = readFileSync(envPath, "utf-8");
+  }
+
+  const lines = content.split("\n").filter((l) => !l.startsWith("PEPPERMINT_TOKEN="));
+  lines.push(`PEPPERMINT_TOKEN=${apiKey}`);
+  writeFileSync(envPath, lines.filter(Boolean).join("\n") + "\n", { mode: 0o600 });
+}
 
 export async function installCodex(
   serverUrl: string,
@@ -11,9 +36,8 @@ export async function installCodex(
 ): Promise<InstallResult> {
   const addArgs = ["mcp", "add", "peppermint-memory", "--url", serverUrl];
 
-  // Pass API key so Codex doesn't trigger its own OAuth flow
   if (apiKey) {
-    addArgs.push("--header", `Authorization: Bearer ${apiKey}`);
+    addArgs.push("--bearer-token-env-var", "PEPPERMINT_TOKEN");
   }
 
   if (dryRun) {
@@ -25,7 +49,16 @@ export async function installCodex(
   }
 
   try {
-    await exec("codex", addArgs, { timeout: 15000 });
+    // Persist the token so Codex can read it at runtime
+    if (apiKey) {
+      persistCodexEnvVar(apiKey);
+    }
+
+    const env = { ...process.env };
+    if (apiKey) {
+      env.PEPPERMINT_TOKEN = apiKey;
+    }
+    await exec("codex", addArgs, { timeout: 15000, env });
     return {
       success: true,
       message: "Added peppermint-memory via codex mcp add",
