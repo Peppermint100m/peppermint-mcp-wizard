@@ -1,0 +1,45 @@
+{
+  "name": "@peppermint/mcp-wizard",
+  "version": "0.1.0",
+  "description": "One-command installer for Peppermint MCP across AI coding hosts",
+  "type": "module",
+  "bin": {
+    "peppermint-mcp-wizard": "./dist/cli.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "peppermint",
+    "mcp",
+    "claude",
+    "cursor",
+    "codex",
+    "ai",
+    "memory"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "commander": "^13.1.0",
+    "jsonc-parser": "^3.3.1",
+    "open": "^10.1.0",
+    "picocolors": "^1.1.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1"
+  }
+}
