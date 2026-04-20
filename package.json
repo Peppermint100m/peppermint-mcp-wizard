@@ -1,13 +1,14 @@
 {
   "name": "@peppermint-mcp/wizard",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "One-command installer for Peppermint MCP across AI coding hosts",
   "type": "module",
   "bin": {
     "peppermint-mcp-wizard": "dist/cli.js"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "skills-bundle/"
   ],
   "scripts": {
     "build": "tsup",

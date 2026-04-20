@@ -10,6 +10,8 @@ import { installCursor, removeCursor } from "./hosts/cursor.js";
 import { installCodex, removeCodex } from "./hosts/codex.js";
 import { checkServerReachable } from "./verify/server.js";
 import { checkHostConfig } from "./verify/host.js";
+import { installSkills, removeLegacySkills } from "./skills/index.js";
+import { installPermissions } from "./skills/permissions.js";
 
 const DEFAULT_SERVER = "https://api.peppermint.com/mcp/";
 
@@ -158,7 +160,35 @@ async function addCommand(options: {
     results.push({ host, result });
   }
 
-  // 6. Verify
+  // 6. Install companion skill + permissions
+  const hasClaudeHost = selectedHosts.some(
+    (h) => h.id === "claude-code" || h.id === "claude-desktop",
+  );
+  if (hasClaudeHost) {
+    // Remove legacy skills
+    const removed = removeLegacySkills(options.dryRun);
+    if (removed.length > 0) {
+      p.log.info(`  ${pc.green("✓")} Removed legacy skills: ${pc.dim(removed.join(", "))}`);
+    }
+
+    // Install unified skill
+    const skillResult = installSkills(options.dryRun);
+    if (skillResult.installed) {
+      p.log.info(`  ${pc.green("✓")} Peppermint skill  ${pc.dim(skillResult.targetPath)}`);
+    } else if (skillResult.error) {
+      p.log.info(`  ${pc.red("✗")} Skill install failed: ${pc.dim(skillResult.error)}`);
+    }
+
+    // Add tool permissions to Claude Code settings
+    const permsResult = installPermissions(options.dryRun);
+    if (permsResult.error) {
+      p.log.info(`  ${pc.red("✗")} Permissions: ${pc.dim(permsResult.error)}`);
+    } else if (permsResult.added.length > 0) {
+      p.log.info(`  ${pc.green("✓")} Added ${permsResult.added.length} tool permissions to Claude Code settings`);
+    }
+  }
+
+  // 7. Verify
   if (options.verify && !options.dryRun) {
     p.log.step("Verifying...");
     for (const { host } of results) {
@@ -173,19 +203,24 @@ async function addCommand(options: {
     }
   }
 
-  // 7. Summary
+  // 8. Summary
   const needRestart = results.filter((r) => r.result.needsRestart);
   const failed = results.filter((r) => !r.result.success);
 
   p.outro(
     failed.length > 0
       ? pc.red(`${failed.length} host(s) failed. Check the output above.`)
-      : needRestart.length > 0
+      : hasClaudeHost
         ? pc.green("Done!") +
-          pc.dim(
-            ` Restart ${needRestart.map((r) => r.host.name).join(", ")} to finish.`,
-          )
-        : pc.green("Done! Peppermint MCP is ready."),
+          (needRestart.length > 0
+            ? pc.dim(` Restart ${needRestart.map((r) => r.host.name).join(", ")} to finish.`)
+            : "") +
+          "\n\n  " + pc.cyan("Peppermint skill installed. Start a new Claude Code session and type") +
+          "\n  " + pc.cyan("@pep or /peppermint to begin onboarding.")
+        : needRestart.length > 0
+          ? pc.green("Done!") +
+            pc.dim(` Restart ${needRestart.map((r) => r.host.name).join(", ")} to finish.`)
+          : pc.green("Done! Peppermint MCP is ready."),
   );
 
   if (failed.length > 0) process.exit(2);
