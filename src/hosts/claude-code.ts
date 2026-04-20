@@ -48,6 +48,10 @@ export async function installClaudeCode(
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "claude mcp add failed";
+    // "already exists" is not a failure — the server is already configured
+    if (message.includes("already exists")) {
+      return { success: true, message: "peppermint-memory already configured", needsRestart: false };
+    }
     return { success: false, message, needsRestart: false };
   }
 }
