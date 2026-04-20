@@ -71,7 +71,7 @@ async function exchangeCodeForTokens(
 async function createApiKey(
   serverBase: string,
   accessToken: string,
-): Promise<{ key: string; id: string }> {
+): Promise<string> {
   const res = await fetch(`${serverBase}/auth/api-keys`, {
     method: "POST",
     headers: {
@@ -89,7 +89,9 @@ async function createApiKey(
     throw new Error(`API key creation failed (${res.status}): ${text}`);
   }
 
-  return res.json();
+  const data = await res.json();
+  // Backend returns { raw_key: "pep_...", id, name, scopes, ... }
+  return data.raw_key;
 }
 
 function waitForCallback(
@@ -203,11 +205,11 @@ export async function authenticateWithBrowser(
   );
 
   // 9. Create API key (long-lived, doesn't expire)
-  const apiKeyResult = await createApiKey(serverBase, tokens.access_token);
+  const rawKey = await createApiKey(serverBase, tokens.access_token);
 
   // 10. Store credentials
   const creds: StoredCredentials = {
-    api_key: apiKeyResult.key,
+    api_key: rawKey,
     email: tokens.email,
     server: serverBase,
     client_id: clientId,
