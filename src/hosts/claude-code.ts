@@ -11,6 +11,7 @@ export interface InstallResult {
 
 export async function installClaudeCode(
   serverUrl: string,
+  apiKey: string | undefined,
   dryRun: boolean,
 ): Promise<InstallResult> {
   const args = [
@@ -23,6 +24,11 @@ export async function installClaudeCode(
     "peppermint-memory",
     serverUrl,
   ];
+
+  // Pass API key as header so Claude Code doesn't trigger its own OAuth flow
+  if (apiKey) {
+    args.push("--header", `Authorization: Bearer ${apiKey}`);
+  }
 
   if (dryRun) {
     return {

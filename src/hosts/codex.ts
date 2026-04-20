@@ -6,9 +6,15 @@ const exec = promisify(execFile);
 
 export async function installCodex(
   serverUrl: string,
+  apiKey: string | undefined,
   dryRun: boolean,
 ): Promise<InstallResult> {
   const addArgs = ["mcp", "add", "peppermint-memory", "--url", serverUrl];
+
+  // Pass API key so Codex doesn't trigger its own OAuth flow
+  if (apiKey) {
+    addArgs.push("--header", `Authorization: Bearer ${apiKey}`);
+  }
 
   if (dryRun) {
     return {

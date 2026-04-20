@@ -18,12 +18,10 @@ function serverBase(serverUrl: string): string {
   return serverUrl.replace(/\/mcp\/?$/, "");
 }
 
-function needsAuth(hosts: DetectedHost[]): boolean {
-  return hosts.some(
-    (h) =>
-      h.installMethod === "file-native-http" ||
-      h.installMethod === "file-stdio-shim",
-  );
+function needsAuth(_hosts: DetectedHost[]): boolean {
+  // Always auth — CLI hosts (Claude Code, Codex) also benefit from having
+  // the API key passed as a header to avoid a second browser OAuth prompt.
+  return true;
 }
 
 async function installHost(
@@ -34,7 +32,7 @@ async function installHost(
 ) {
   switch (host.id) {
     case "claude-code":
-      return installClaudeCode(serverUrl, dryRun);
+      return installClaudeCode(serverUrl, apiKey, dryRun);
     case "claude-desktop":
       if (!apiKey) throw new Error("API key required for Claude Desktop");
       return installClaudeDesktop(serverUrl, apiKey, dryRun);
@@ -42,7 +40,7 @@ async function installHost(
       if (!apiKey) throw new Error("API key required for Cursor");
       return installCursor(serverUrl, apiKey, dryRun);
     case "codex":
-      return installCodex(serverUrl, dryRun);
+      return installCodex(serverUrl, apiKey, dryRun);
   }
 }
 
