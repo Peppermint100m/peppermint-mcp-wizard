@@ -160,8 +160,8 @@ async function addCommand(options: {
     results.push({ host, result });
   }
 
-  // 6. Install companion skill + permissions
-  const hasClaudeHost = selectedHosts.some(
+  // 6. Install companion skill + permissions (if Claude Code/Desktop detected, even if not selected)
+  const hasClaudeHost = hosts.some(
     (h) => h.id === "claude-code" || h.id === "claude-desktop",
   );
   if (hasClaudeHost) {
