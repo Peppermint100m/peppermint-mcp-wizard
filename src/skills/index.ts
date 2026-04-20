@@ -58,27 +58,28 @@ export function removeLegacySkills(dryRun: boolean): string[] {
   return removed;
 }
 
-export function installSkills(dryRun: boolean): { installed: boolean; targetPath: string; error?: string } {
+export function installSkills(dryRun: boolean): { installed: boolean; updated: boolean; targetPath: string; error?: string } {
   const bundlePath = getSkillsBundlePath();
   const targetPath = getTargetPath();
+  const alreadyExists = existsSync(join(targetPath, "SKILL.md"));
 
   if (!existsSync(bundlePath)) {
-    return { installed: false, targetPath, error: "Skills bundle not found in package" };
+    return { installed: false, updated: false, targetPath, error: "Skills bundle not found in package" };
   }
 
   if (dryRun) {
-    return { installed: true, targetPath };
+    return { installed: true, updated: alreadyExists, targetPath };
   }
 
   try {
-    // Remove existing skill dir and replace with fresh copy
+    // Always overwrite with latest skill files
     if (existsSync(targetPath)) {
       rmSync(targetPath, { recursive: true, force: true });
     }
     copyDirRecursive(bundlePath, targetPath);
-    return { installed: true, targetPath };
+    return { installed: true, updated: alreadyExists, targetPath };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to install skills";
-    return { installed: false, targetPath, error: message };
+    return { installed: false, updated: false, targetPath, error: message };
   }
 }

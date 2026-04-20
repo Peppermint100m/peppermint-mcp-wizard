@@ -171,10 +171,11 @@ async function addCommand(options: {
       p.log.info(`  ${pc.green("✓")} Removed legacy skills: ${pc.dim(removed.join(", "))}`);
     }
 
-    // Install unified skill
+    // Install unified skill (always overwrites to pick up updates)
     const skillResult = installSkills(options.dryRun);
     if (skillResult.installed) {
-      p.log.info(`  ${pc.green("✓")} Peppermint skill  ${pc.dim(skillResult.targetPath)}`);
+      const verb = skillResult.updated ? "Updated" : "Installed";
+      p.log.info(`  ${pc.green("✓")} ${verb} Peppermint skill  ${pc.dim(skillResult.targetPath)}`);
     } else if (skillResult.error) {
       p.log.info(`  ${pc.red("✗")} Skill install failed: ${pc.dim(skillResult.error)}`);
     }
