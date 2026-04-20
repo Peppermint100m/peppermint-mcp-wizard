@@ -1,10 +1,10 @@
 {
-  "name": "@peppermint/mcp-wizard",
+  "name": "@peppermint-mcp/wizard",
   "version": "0.1.0",
   "description": "One-command installer for Peppermint MCP across AI coding hosts",
   "type": "module",
   "bin": {
-    "peppermint-mcp-wizard": "./dist/cli.js"
+    "peppermint-mcp-wizard": "dist/cli.js"
   },
   "files": [
     "dist/"

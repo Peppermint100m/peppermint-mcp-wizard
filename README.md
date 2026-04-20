@@ -1,9 +1,9 @@
-# @peppermint/mcp-wizard
+# @peppermint-mcp/wizard
 
 One-command installer for [Peppermint](https://peppermint.com) MCP across AI coding hosts.
 
 ```bash
-npx @peppermint/mcp-wizard
+npx @peppermint-mcp/wizard
 ```
 
 Detects your installed AI tools, authenticates with Peppermint, and writes the correct MCP config for each host. No manual JSON editing.
@@ -22,7 +22,7 @@ Detects your installed AI tools, authenticates with Peppermint, and writes the c
 ### Install Peppermint MCP
 
 ```bash
-npx @peppermint/mcp-wizard
+npx @peppermint-mcp/wizard
 ```
 
 The wizard will:
@@ -36,13 +36,13 @@ The wizard will:
 
 ```bash
 # List detected hosts and their status
-npx @peppermint/mcp-wizard list
+npx @peppermint-mcp/wizard list
 
 # Health check on existing installation
-npx @peppermint/mcp-wizard doctor
+npx @peppermint-mcp/wizard doctor
 
 # Remove Peppermint from selected hosts
-npx @peppermint/mcp-wizard remove
+npx @peppermint-mcp/wizard remove
 ```
 
 ### Flags
@@ -56,7 +56,7 @@ npx @peppermint/mcp-wizard remove
 ### Using staging
 
 ```bash
-npx @peppermint/mcp-wizard --server https://dev-api.peppermint.com/mcp/
+npx @peppermint-mcp/wizard --server https://dev-api.peppermint.com/mcp/
 ```
 
 ## How it works
