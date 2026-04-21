@@ -65,83 +65,122 @@ async function addCommand(options: {
   server: string;
   dryRun: boolean;
   verify: boolean;
+  host?: string[];
+  yes: boolean;
+  authToken?: string;
 }) {
-  if (!process.stdin.isTTY) {
+  const nonInteractive = options.yes || options.host?.length || options.authToken || !process.stdin.isTTY;
+
+  if (!process.stdin.isTTY && !nonInteractive) {
     console.error("Error: peppermint-mcp-wizard requires an interactive terminal.");
-    console.error("For non-interactive installs, use: --host claude-code --yes (coming soon)");
+    console.error("For non-interactive installs, use: --host claude-code --yes");
     process.exit(1);
   }
 
-  p.intro(pc.green("🌿 Peppermint MCP Wizard"));
+  if (!nonInteractive) {
+    p.intro(pc.green("🌿 Peppermint MCP Wizard"));
+  }
 
   // 1. Detect hosts
-  const s = p.spinner();
-  s.start("Detecting AI hosts...");
   const hosts = await detectHosts();
-  s.stop("Detection complete");
 
-  if (hosts.length === 0) {
-    p.log.error(
-      "No supported AI hosts detected. Install Claude Code, Claude Desktop, Cursor, or Codex CLI and try again.",
-    );
+  if (!nonInteractive) {
+    const s = p.spinner();
+    s.start("Detecting AI hosts...");
+    // Already detected above, just show spinner briefly
+    s.stop("Detection complete");
+
+    if (hosts.length === 0) {
+      p.log.error(
+        "No supported AI hosts detected. Install Claude Code, Claude Desktop, Cursor, or Codex CLI and try again.",
+      );
+      process.exit(6);
+    }
+
+    // Display detected hosts
+    for (const host of hosts) {
+      const status = host.alreadyInstalled
+        ? pc.yellow("already configured")
+        : pc.dim("not configured");
+      const version = host.version ? pc.dim(` (${host.version})`) : "";
+      p.log.info(`${host.alreadyInstalled ? "⚠" : "✓"} ${host.name}${version}  ${status}`);
+    }
+  } else if (hosts.length === 0) {
+    console.error("No supported AI hosts detected.");
     process.exit(6);
   }
 
-  // Display detected hosts
-  for (const host of hosts) {
-    const status = host.alreadyInstalled
-      ? pc.yellow("already configured")
-      : pc.dim("not configured");
-    const version = host.version ? pc.dim(` (${host.version})`) : "";
-    p.log.info(`${host.alreadyInstalled ? "⚠" : "✓"} ${host.name}${version}  ${status}`);
+  // 2. Select hosts
+  let selectedHosts: DetectedHost[];
+
+  if (options.host?.length) {
+    // Non-interactive: use specified hosts
+    const requestedIds = options.host as HostId[];
+    selectedHosts = hosts.filter((h) => requestedIds.includes(h.id));
+    const missing = requestedIds.filter((id) => !hosts.find((h) => h.id === id));
+    if (missing.length > 0) {
+      const msg = `Host(s) not detected: ${missing.join(", ")}`;
+      nonInteractive ? console.error(msg) : p.log.error(msg);
+      process.exit(6);
+    }
+  } else if (nonInteractive) {
+    // --yes without --host: install to all detected hosts
+    selectedHosts = hosts;
+  } else {
+    // Interactive: prompt
+    const unconfigured = hosts.filter((h) => !h.alreadyInstalled);
+    const toInstall = unconfigured.length > 0 ? unconfigured : hosts;
+
+    const selected = await p.multiselect({
+      message: "Install Peppermint MCP into which hosts?",
+      options: toInstall.map((h) => ({
+        value: h.id,
+        label: h.name,
+        hint: h.alreadyInstalled ? "will reinstall" : undefined,
+      })),
+      initialValues: toInstall.map((h) => h.id),
+    });
+
+    if (p.isCancel(selected)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+
+    selectedHosts = hosts.filter((h) =>
+      (selected as HostId[]).includes(h.id),
+    );
   }
-
-  // 2. Prompt host selection
-  const unconfigured = hosts.filter((h) => !h.alreadyInstalled);
-  const toInstall =
-    unconfigured.length > 0 ? unconfigured : hosts;
-
-  const selected = await p.multiselect({
-    message: "Install Peppermint MCP into which hosts?",
-    options: toInstall.map((h) => ({
-      value: h.id,
-      label: h.name,
-      hint: h.alreadyInstalled ? "will reinstall" : undefined,
-    })),
-    initialValues: toInstall.map((h) => h.id),
-  });
-
-  if (p.isCancel(selected)) {
-    p.cancel("Cancelled.");
-    process.exit(0);
-  }
-
-  const selectedHosts = hosts.filter((h) =>
-    (selected as HostId[]).includes(h.id),
-  );
 
   // 3. Check server reachability
-  s.start(`Checking server at ${options.server}...`);
   const serverCheck = await checkServerReachable(options.server);
   if (!serverCheck.reachable) {
-    s.stop("Server unreachable");
-    p.log.error(
-      `Cannot reach ${options.server}: ${serverCheck.error}\nCheck your internet connection and try again.`,
-    );
+    const msg = `Cannot reach ${options.server}: ${serverCheck.error}`;
+    nonInteractive ? console.error(msg) : p.log.error(msg);
     process.exit(4);
   }
-  s.stop(
-    `Server reachable ${pc.dim(`(${serverCheck.latencyMs}ms)`)}`,
-  );
+  if (!nonInteractive) {
+    p.log.success(`Server reachable ${pc.dim(`(${serverCheck.latencyMs}ms)`)}`);
+  }
 
-  // 4. Authenticate if needed (file-based hosts require API key)
+  // 4. Authenticate
   let apiKey: string | undefined;
-  if (needsAuth(selectedHosts)) {
+
+  // --auth-token flag or PEPPERMINT_AUTH_TOKEN env var
+  const tokenFromFlag = options.authToken || process.env.PEPPERMINT_AUTH_TOKEN;
+  if (tokenFromFlag) {
+    apiKey = tokenFromFlag;
+    const msg = "Using provided auth token";
+    nonInteractive ? console.log(msg) : p.log.success(msg);
+  } else if (needsAuth(selectedHosts)) {
     const base = serverBase(options.server);
     const existing = loadCredentials(base);
     if (existing) {
       apiKey = existing.api_key;
-      p.log.success(`Authenticated as ${pc.bold(existing.email || "user")} (cached)`);
+      const msg = `Authenticated as ${existing.email || "user"} (cached)`;
+      nonInteractive ? console.log(msg) : p.log.success(pc.bold(msg));
+    } else if (nonInteractive) {
+      console.error("Error: non-interactive mode requires --auth-token or PEPPERMINT_AUTH_TOKEN, or cached credentials.");
+      process.exit(3);
     } else {
       p.log.info("Opening browser for authentication...");
       try {
@@ -338,7 +377,17 @@ program
   .option("--server <url>", "MCP server URL", DEFAULT_SERVER)
   .option("--dry-run", "Print changes without writing", false)
   .option("--no-verify", "Skip post-install verification")
-  .action((opts) => addCommand({ server: opts.server, dryRun: opts.dryRun, verify: opts.verify }));
+  .option("--host <id...>", "Install to specific hosts (claude-code, claude-desktop, cursor, codex)")
+  .option("--yes", "Skip all prompts (non-interactive)", false)
+  .option("--auth-token <token>", "API key or token for auth (skips browser OAuth)")
+  .action((opts) => addCommand({
+    server: opts.server,
+    dryRun: opts.dryRun,
+    verify: opts.verify,
+    host: opts.host,
+    yes: opts.yes,
+    authToken: opts.authToken,
+  }));
 
 program
   .command("list")
