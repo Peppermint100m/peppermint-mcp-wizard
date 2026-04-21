@@ -66,6 +66,12 @@ async function addCommand(options: {
   dryRun: boolean;
   verify: boolean;
 }) {
+  if (!process.stdin.isTTY) {
+    console.error("Error: peppermint-mcp-wizard requires an interactive terminal.");
+    console.error("For non-interactive installs, use: --host claude-code --yes (coming soon)");
+    process.exit(1);
+  }
+
   p.intro(pc.green("🌿 Peppermint MCP Wizard"));
 
   // 1. Detect hosts

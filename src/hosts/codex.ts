@@ -54,6 +54,13 @@ export async function installCodex(
       persistCodexEnvVar(apiKey);
     }
 
+    // Remove existing entry first to ensure URL + headers are updated
+    try {
+      await exec("codex", ["mcp", "remove", "peppermint-memory"], { timeout: 15000 });
+    } catch {
+      // Ignore — may not exist
+    }
+
     const env = { ...process.env };
     if (apiKey) {
       env.PEPPERMINT_TOKEN = apiKey;

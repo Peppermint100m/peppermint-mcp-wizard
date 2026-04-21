@@ -32,13 +32,13 @@ export function checkHostConfig(
   try {
     const content = readFileSync(configPath, "utf-8");
     const parsed = jsonc.parse(content);
-    const hasPeppermint = !!parsed?.mcpServers?.peppermint;
+    const hasPeppermint = !!parsed?.mcpServers?.["peppermint-memory"] || !!parsed?.mcpServers?.peppermint;
 
     if (!hasPeppermint) {
       return {
         hostId,
         status: "fail",
-        message: "peppermint entry not found in config",
+        message: "peppermint-memory entry not found in config",
       };
     }
 

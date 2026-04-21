@@ -39,19 +39,24 @@ export async function installClaudeCode(
   }
 
   try {
+    // Remove existing entries to ensure URL + headers are updated
+    // Also removes legacy "peppermint" name (Bug 8)
+    for (const name of ["peppermint-memory", "peppermint"]) {
+      try {
+        await exec("claude", ["mcp", "remove", "--scope", "user", name], { timeout: 15000 });
+      } catch {
+        // Ignore — may not exist
+      }
+    }
     await exec("claude", args, { timeout: 15000 });
     return {
       success: true,
       message: "Added peppermint-memory via claude mcp add",
-      needsRestart: false,
+      needsRestart: true,
     };
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "claude mcp add failed";
-    // "already exists" is not a failure — the server is already configured
-    if (message.includes("already exists")) {
-      return { success: true, message: "peppermint-memory already configured", needsRestart: false };
-    }
     return { success: false, message, needsRestart: false };
   }
 }

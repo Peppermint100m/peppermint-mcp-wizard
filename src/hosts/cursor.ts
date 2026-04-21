@@ -22,10 +22,13 @@ export async function installCursor(
   };
 
   try {
+    // Remove legacy "peppermint" entry if it exists (Bug 8)
+    removeServerFromConfig(configPath, "mcpServers", "peppermint", dryRun);
+
     const result = writeServerToConfig({
       filePath: configPath,
       serverProperty: "mcpServers",
-      serverName: "peppermint",
+      serverName: "peppermint-memory",
       serverConfig,
       dryRun,
     });
@@ -46,7 +49,7 @@ export async function removeCursor(dryRun: boolean): Promise<InstallResult> {
   const removed = removeServerFromConfig(
     configPath,
     "mcpServers",
-    "peppermint",
+    "peppermint-memory",
     dryRun,
   );
 

@@ -1,6 +1,6 @@
 {
   "name": "@peppermint-mcp/wizard",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "One-command installer for Peppermint MCP across AI coding hosts",
   "type": "module",
   "bin": {

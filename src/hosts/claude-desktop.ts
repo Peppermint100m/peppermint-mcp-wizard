@@ -20,25 +20,22 @@ export async function installClaudeDesktop(
 ): Promise<InstallResult> {
   const configPath = getConfigPath();
 
+  // Native HTTP MCP — Claude Desktop supports this since ~v0.10
   const serverConfig = {
-    command: "npx",
-    args: [
-      "-y",
-      "mcp-remote@latest",
-      serverUrl,
-      "--header",
-      "Authorization:${PEPPERMINT_AUTH_HEADER}",
-    ],
-    env: {
-      PEPPERMINT_AUTH_HEADER: `Bearer ${apiKey}`,
+    url: serverUrl,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
     },
   };
 
   try {
+    // Remove legacy "peppermint" entry if it exists (Bug 8)
+    removeServerFromConfig(configPath, "mcpServers", "peppermint", dryRun);
+
     const result = writeServerToConfig({
       filePath: configPath,
       serverProperty: "mcpServers",
-      serverName: "peppermint",
+      serverName: "peppermint-memory",
       serverConfig,
       dryRun,
     });
@@ -61,7 +58,7 @@ export async function removeClaudeDesktop(
   const removed = removeServerFromConfig(
     configPath,
     "mcpServers",
-    "peppermint",
+    "peppermint-memory",
     dryRun,
   );
 

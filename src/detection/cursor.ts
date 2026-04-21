@@ -24,7 +24,7 @@ export async function detectCursor(): Promise<DetectedHost | null> {
     try {
       const content = readFileSync(configPath, "utf-8");
       const parsed = jsonc.parse(content);
-      alreadyInstalled = !!parsed?.mcpServers?.peppermint;
+      alreadyInstalled = !!parsed?.mcpServers?.["peppermint-memory"] || !!parsed?.mcpServers?.peppermint;
     } catch {
       warnings.push("Config file exists but could not be parsed");
     }

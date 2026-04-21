@@ -35,7 +35,7 @@ export async function detectClaudeDesktop(): Promise<DetectedHost | null> {
     try {
       const content = readFileSync(configPath, "utf-8");
       const parsed = jsonc.parse(content);
-      alreadyInstalled = !!parsed?.mcpServers?.peppermint;
+      alreadyInstalled = !!parsed?.mcpServers?.["peppermint-memory"] || !!parsed?.mcpServers?.peppermint;
     } catch {
       warnings.push("Config file exists but could not be parsed");
     }
@@ -44,7 +44,7 @@ export async function detectClaudeDesktop(): Promise<DetectedHost | null> {
   return {
     id: "claude-desktop",
     name: "Claude Desktop",
-    installMethod: "file-stdio-shim",
+    installMethod: "file-native-http",
     configPath,
     alreadyInstalled,
     needsRestart: true,
