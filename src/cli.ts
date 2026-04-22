@@ -390,14 +390,15 @@ async function removeCommand(options: { server: string; dryRun: boolean; yes: bo
     const creds = loadCredentials(base);
     if (creds && !options.dryRun) {
       try {
-        // Revoke by listing keys and deleting the mcp-wizard ones
+        // Revoke only THIS machine's key by matching key_prefix
+        const keyPrefix = creds.api_key.slice(0, 8);
         const res = await fetch(`${base}/auth/api-keys`, {
           headers: { Authorization: `Bearer ${creds.api_key}` },
         });
         if (res.ok) {
-          const keys = await res.json() as Array<{ id: string; name: string }>;
+          const keys = await res.json() as Array<{ id: string; name: string; key_prefix: string }>;
           for (const key of keys) {
-            if (key.name === "mcp-wizard") {
+            if (key.key_prefix === keyPrefix) {
               await fetch(`${base}/auth/api-keys/${key.id}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${creds.api_key}` },
