@@ -2,7 +2,7 @@ import { Command } from "commander";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { detectHosts, type DetectedHost, type HostId } from "./detection/index.js";
-import { loadCredentials } from "./auth/token-store.js";
+import { loadCredentials, clearCredentials } from "./auth/token-store.js";
 import { authenticateWithBrowser } from "./auth/localhost-oauth.js";
 import { installClaudeCode, removeClaudeCode } from "./hosts/claude-code.js";
 import { installClaudeDesktop, removeClaudeDesktop } from "./hosts/claude-desktop.js";
@@ -218,9 +218,12 @@ async function addCommand(options: {
 
     // Install unified skill (always overwrites to pick up updates)
     const skillResult = installSkills(options.dryRun);
-    if (skillResult.installed) {
+    if (skillResult.skipped) {
+      p.log.info(`  ${pc.green("✓")} Peppermint skill  ${pc.dim("up to date")}`);
+    } else if (skillResult.installed) {
       const verb = skillResult.updated ? "Updated" : "Installed";
-      p.log.info(`  ${pc.green("✓")} ${verb} Peppermint skill  ${pc.dim(skillResult.targetPath)}`);
+      const backup = skillResult.backedUp ? pc.dim(" (previous version backed up)") : "";
+      p.log.info(`  ${pc.green("✓")} ${verb} Peppermint skill${backup}  ${pc.dim(skillResult.targetPath)}`);
     } else if (skillResult.error) {
       p.log.info(`  ${pc.red("✗")} Skill install failed: ${pc.dim(skillResult.error)}`);
     }
@@ -326,42 +329,99 @@ async function doctorCommand(options: { server: string }) {
   p.outro("Health check complete");
 }
 
-async function removeCommand(options: { server: string; dryRun: boolean }) {
-  p.intro(pc.green("🌿 Peppermint MCP Wizard — Remove"));
+async function removeCommand(options: { server: string; dryRun: boolean; yes: boolean; revokeToken: boolean }) {
+  const nonInteractive = options.yes || !process.stdin.isTTY;
+
+  if (!process.stdin.isTTY && !nonInteractive) {
+    console.error("Error: peppermint-mcp-wizard requires an interactive terminal.");
+    console.error("For non-interactive removes, use: --yes");
+    process.exit(1);
+  }
+
+  if (!nonInteractive) {
+    p.intro(pc.green("🌿 Peppermint MCP Wizard — Remove"));
+  }
 
   const hosts = await detectHosts();
   const installed = hosts.filter((h) => h.alreadyInstalled);
 
   if (installed.length === 0) {
-    p.log.info("Peppermint is not installed in any detected hosts.");
+    const msg = "Peppermint is not installed in any detected hosts.";
+    nonInteractive ? console.log(msg) : p.log.info(msg);
     process.exit(0);
   }
 
-  const selected = await p.multiselect({
-    message: "Remove Peppermint MCP from which hosts?",
-    options: installed.map((h) => ({
-      value: h.id,
-      label: h.name,
-    })),
-    initialValues: installed.map((h) => h.id),
-  });
+  let selectedHosts: DetectedHost[];
 
-  if (p.isCancel(selected)) {
-    p.cancel("Cancelled.");
-    process.exit(0);
+  if (nonInteractive) {
+    // Remove from all installed hosts
+    selectedHosts = installed;
+  } else {
+    const selected = await p.multiselect({
+      message: "Remove Peppermint MCP from which hosts?",
+      options: installed.map((h) => ({
+        value: h.id,
+        label: h.name,
+      })),
+      initialValues: installed.map((h) => h.id),
+    });
+
+    if (p.isCancel(selected)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+
+    selectedHosts = hosts.filter((h) =>
+      (selected as HostId[]).includes(h.id),
+    );
   }
-
-  const selectedHosts = hosts.filter((h) =>
-    (selected as HostId[]).includes(h.id),
-  );
 
   for (const host of selectedHosts) {
     const result = await removeHost(host, options.dryRun);
     const icon = result.success ? pc.green("✓") : pc.red("✗");
-    p.log.info(`${icon} ${host.name}  ${pc.dim(result.message)}`);
+    nonInteractive
+      ? console.log(`${result.success ? "✓" : "✗"} ${host.name}  ${result.message}`)
+      : p.log.info(`${icon} ${host.name}  ${pc.dim(result.message)}`);
   }
 
-  p.outro("Removal complete");
+  // Revoke API key on the server (Bug 18)
+  if (options.revokeToken) {
+    const base = serverBase(options.server);
+    const creds = loadCredentials(base);
+    if (creds && !options.dryRun) {
+      try {
+        // Revoke by listing keys and deleting the mcp-wizard ones
+        const res = await fetch(`${base}/auth/api-keys`, {
+          headers: { Authorization: `Bearer ${creds.api_key}` },
+        });
+        if (res.ok) {
+          const keys = await res.json() as Array<{ id: string; name: string }>;
+          for (const key of keys) {
+            if (key.name === "mcp-wizard") {
+              await fetch(`${base}/auth/api-keys/${key.id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${creds.api_key}` },
+              });
+            }
+          }
+        }
+        clearCredentials();
+        const msg = "Revoked API key and cleared credentials";
+        nonInteractive ? console.log(`✓ ${msg}`) : p.log.info(`${pc.green("✓")} ${msg}`);
+      } catch {
+        const msg = "Failed to revoke API key (credentials cleared locally)";
+        clearCredentials();
+        nonInteractive ? console.log(`⚠ ${msg}`) : p.log.info(`${pc.yellow("⚠")} ${msg}`);
+      }
+    } else if (creds && options.dryRun) {
+      const msg = "Would revoke API key and clear credentials";
+      nonInteractive ? console.log(msg) : p.log.info(msg);
+    }
+  }
+
+  if (!nonInteractive) {
+    p.outro("Removal complete");
+  }
 }
 
 // ── Program ──────────────────────────────────────────────────────────────
@@ -406,6 +466,9 @@ program
   .description("Remove Peppermint MCP from selected hosts")
   .option("--server <url>", "MCP server URL", DEFAULT_SERVER)
   .option("--dry-run", "Print changes without writing", false)
-  .action((opts) => removeCommand({ server: opts.server, dryRun: opts.dryRun }));
+  .option("--yes", "Skip all prompts (non-interactive)", false)
+  .option("--revoke-token", "Revoke API key on the server", true)
+  .option("--no-revoke-token", "Keep API key for future re-installs")
+  .action((opts) => removeCommand({ server: opts.server, dryRun: opts.dryRun, yes: opts.yes, revokeToken: opts.revokeToken }));
 
 program.parse();

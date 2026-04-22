@@ -17,7 +17,7 @@ export interface WriteConfigOptions {
   dryRun: boolean;
 }
 
-export function writeServerToConfig(options: WriteConfigOptions): string {
+export function writeServerToConfig(options: WriteConfigOptions): string | null {
   const { filePath, serverProperty, serverName, serverConfig, dryRun } =
     options;
 
@@ -49,6 +49,11 @@ export function writeServerToConfig(options: WriteConfigOptions): string {
     throw new Error(
       `Config merge produced invalid JSON: ${errors.map((e) => jsonc.printParseErrorCode(e.error)).join(", ")}`,
     );
+  }
+
+  // Skip write if content is identical (Bug 17)
+  if (content === updated) {
+    return null; // null signals "no change needed"
   }
 
   if (dryRun) {

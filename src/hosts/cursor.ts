@@ -33,6 +33,9 @@ export async function installCursor(
       dryRun,
     });
 
+    if (result === null) {
+      return { success: true, message: "Already up to date", needsRestart: false };
+    }
     return {
       success: true,
       message: dryRun ? result : `Wrote config to ${configPath}`,
