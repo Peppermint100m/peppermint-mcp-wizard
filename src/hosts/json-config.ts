@@ -85,9 +85,16 @@ export function removeServerFromConfig(
   }
 
   const content = readFileSync(filePath, "utf-8");
-  const edits = jsonc.modify(content, [serverProperty, serverName], undefined, {
-    formattingOptions: { tabSize: 2, insertSpaces: true },
-  });
+
+  let edits: jsonc.EditResult;
+  try {
+    edits = jsonc.modify(content, [serverProperty, serverName], undefined, {
+      formattingOptions: { tabSize: 2, insertSpaces: true },
+    });
+  } catch {
+    // jsonc-parser throws on empty/minimal documents — nothing to delete
+    return false;
+  }
 
   if (edits.length === 0) {
     return false;

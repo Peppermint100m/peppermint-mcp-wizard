@@ -12,6 +12,7 @@ import { checkServerReachable } from "./verify/server.js";
 import { checkHostConfig } from "./verify/host.js";
 import { installSkills, removeLegacySkills } from "./skills/index.js";
 import { installPermissions } from "./skills/permissions.js";
+import { captureException, flush } from "./telemetry.js";
 
 const DEFAULT_SERVER = "https://api.peppermint.com/mcp/";
 
@@ -155,7 +156,9 @@ async function addCommand(options: {
   const serverCheck = await checkServerReachable(options.server);
   if (!serverCheck.reachable) {
     const msg = `Cannot reach ${options.server}: ${serverCheck.error}`;
+    captureException(new Error(msg), { tags: { command: "add", phase: "server_check" } });
     nonInteractive ? console.error(msg) : p.log.error(msg);
+    await flush();
     process.exit(4);
   }
   if (!nonInteractive) {
@@ -189,7 +192,9 @@ async function addCommand(options: {
         p.log.success(`Authenticated as ${pc.bold(creds.email || "user")}`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Authentication failed";
+        captureException(err, { tags: { command: "add", phase: "auth" } });
         p.log.error(msg);
+        await flush();
         process.exit(3);
       }
     }
@@ -202,6 +207,11 @@ async function addCommand(options: {
     const result = await installHost(host, options.server, apiKey, options.dryRun);
     const icon = result.success ? pc.green("✓") : pc.red("✗");
     p.log.info(`  ${icon} ${host.name}  ${pc.dim(result.message)}`);
+    if (!result.success) {
+      captureException(new Error(result.message), {
+        tags: { host: host.id, command: "add", phase: "install" },
+      });
+    }
     results.push({ host, result });
   }
 
@@ -225,12 +235,18 @@ async function addCommand(options: {
       const backup = skillResult.backedUp ? pc.dim(" (previous version backed up)") : "";
       p.log.info(`  ${pc.green("✓")} ${verb} Peppermint skill${backup}  ${pc.dim(skillResult.targetPath)}`);
     } else if (skillResult.error) {
+      captureException(new Error(skillResult.error), {
+        tags: { command: "add", phase: "skills" },
+      });
       p.log.info(`  ${pc.red("✗")} Skill install failed: ${pc.dim(skillResult.error)}`);
     }
 
     // Add tool permissions to Claude Code settings
     const permsResult = installPermissions(options.dryRun);
     if (permsResult.error) {
+      captureException(new Error(permsResult.error), {
+        tags: { command: "add", phase: "permissions" },
+      });
       p.log.info(`  ${pc.red("✗")} Permissions: ${pc.dim(permsResult.error)}`);
     } else if (permsResult.added.length > 0) {
       p.log.info(`  ${pc.green("✓")} Added ${permsResult.added.length} tool permissions to Claude Code settings`);
@@ -248,6 +264,11 @@ async function addCommand(options: {
           : check.status === "warn"
             ? pc.yellow("⚠")
             : pc.red("✗");
+      if (check.status === "fail") {
+        captureException(new Error(check.message), {
+          tags: { host: host.id, command: "add", phase: "verify" },
+        });
+      }
       p.log.info(`  ${icon} ${host.name}  ${pc.dim(check.message)}`);
     }
   }
@@ -272,7 +293,10 @@ async function addCommand(options: {
           : pc.green("Done! Peppermint MCP is ready."),
   );
 
-  if (failed.length > 0) process.exit(2);
+  if (failed.length > 0) {
+    await flush();
+    process.exit(2);
+  }
 }
 
 async function listCommand(options: { server: string }) {
