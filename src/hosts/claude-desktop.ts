@@ -15,18 +15,16 @@ function getConfigPath(): string {
 
 export async function installClaudeDesktop(
   serverUrl: string,
-  apiKey: string,
+  apiKey: string | undefined,
   dryRun: boolean,
 ): Promise<InstallResult> {
   const configPath = getConfigPath();
 
   // Native HTTP MCP — Claude Desktop supports this since ~v0.10
-  const serverConfig = {
-    url: serverUrl,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  };
+  const serverConfig: Record<string, unknown> = { url: serverUrl };
+  if (apiKey) {
+    serverConfig.headers = { Authorization: `Bearer ${apiKey}` };
+  }
 
   try {
     // Remove legacy "peppermint" entry if it exists (Bug 8)

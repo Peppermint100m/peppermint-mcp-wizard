@@ -21,7 +21,10 @@ function serverBase(serverUrl: string): string {
   return serverUrl.replace(/\/mcp\/?$/, "");
 }
 
-function needsAuth(_hosts: DetectedHost[]): boolean {
+function needsAuth(serverUrl?: string): boolean {
+  if (serverUrl && (serverUrl.includes("localhost") || serverUrl.includes("127.0.0.1"))) {
+    return false;
+  }
   // Always auth — CLI hosts (Claude Code, Codex) also benefit from having
   // the API key passed as a header to avoid a second browser OAuth prompt.
   return true;
@@ -37,10 +40,8 @@ async function installHost(
     case "claude-code":
       return installClaudeCode(serverUrl, apiKey, dryRun);
     case "claude-desktop":
-      if (!apiKey) throw new Error("API key required for Claude Desktop");
       return installClaudeDesktop(serverUrl, apiKey, dryRun);
     case "cursor":
-      if (!apiKey) throw new Error("API key required for Cursor");
       return installCursor(serverUrl, apiKey, dryRun);
     case "codex":
       return installCodex(serverUrl, apiKey, dryRun);
@@ -174,7 +175,7 @@ async function addCommand(options: {
     apiKey = tokenFromFlag;
     const msg = "Using provided auth token";
     nonInteractive ? console.log(msg) : p.log.success(msg);
-  } else if (needsAuth(selectedHosts)) {
+  } else if (needsAuth(options.server)) {
     const base = serverBase(options.server);
     const existing = loadCredentials(base);
     if (existing) {
