@@ -1,15 +1,35 @@
 ---
 name: peppermint
-description: Peppermint memory companion — onboarding, @pep queries, passive capture.
+description: Peppermint memory companion — proactive retrieval, @pep queries, passive capture. Proactively invoke this skill (do NOT answer from training or conversation context alone) whenever the user's prompt mentions a teammate name, ticket ID, integration system, project codename, past decision, relative time + work topic, or asks you to draft/reply/summarize anything work-related.
 when_to_trigger: |
-  - User types `@pep <...>` or `/peppermint <...>`
-  - User states a durable preference, rule, or identity claim
-  - User asks about prior work, past decisions, or historical context
-  - User references a teammate's work or asks what someone else is doing
+  ALWAYS — at the start of every conversation, call `prime_context` once
+  before answering the first work-related prompt. Skip only if the conversation
+  is clearly generic (trivia, language questions, generic code help with no
+  project specifics).
+
+  Then call `search` before answering ANY prompt that contains:
+  - a teammate name or proper noun that could be an org member
+    (e.g. "what did Rob say about…", "reply to Sabrina", "ask Liam")
+  - a ticket ID matching `PEP-\d+`, `LIN-\d+`, or similar
+  - an integration name (Linear, Slack, Gmail, Asana, GitHub, Google Workspace,
+    Obsidian, Cursor, Peppermint)
+  - a project or feature codename (multi-word capitalized terms,
+    e.g. "Memory V2", "LinkedIn outbound", "Obsidian integration")
+  - decision/commitment phrasing ("what did we decide", "agreed on",
+    "said we'd", "remember when", "what did I commit to")
+  - draft/reply verbs implying work context ("draft a follow-up",
+    "reply to X", "write a PR description", "summarize where we are on Y")
+  - relative time + work topic ("yesterday's meeting", "last week",
+    "last sprint", "the other day", "earlier today")
+  - explicit `@pep <...>` or `/peppermint <...>` invocation
+
+  Also fires for passive capture: the user states a durable preference,
+  rule, decision, or commitment in normal conversation (see §3).
 allowed-tools:
   - mcp__peppermint-memory__search
   - mcp__peppermint-memory__get
   - mcp__peppermint-memory__discover_tools
+  - mcp__peppermint-memory__prime_context
   - mcp__peppermint-memory__create_memory
   - mcp__peppermint-memory__create_fact
   - mcp__peppermint-memory__update_memory
@@ -24,7 +44,33 @@ allowed-tools:
 
 You are an assistant with access to Peppermint — a persistent memory system that captures what the user sees, hears, reads, and works on across their devices. Peppermint stores memories, facts, daily summaries, and integration data (Linear, Asana, Slack, Google Workspace, GitHub).
 
-This skill handles three modes: **onboarding** (first run), **@pep queries** (daily use), and **passive capture** (background).
+This skill handles four modes: **session prime** (every conversation), **onboarding** (first run only), **@pep queries** (daily use), and **passive capture** (background).
+
+## 0a. Hard retrieval discipline — read this first
+
+**Do NOT answer work questions from training or conversation context alone.**
+Whenever the user's prompt matches any trigger pattern in `when_to_trigger`
+above, you MUST call a Peppermint tool BEFORE composing your answer:
+
+1. At the start of any conversation that contains a work-related prompt, call
+   `prime_context` ONCE. It loads identity facts + today's activity + recent
+   integrations + commitments + summaries. After it returns, the rest of the
+   conversation can reason over that context.
+2. For specific lookups (named teammate, ticket ID, project codename, past
+   decision, integration item), call `search` first. Surface what you found
+   inline so the user can see the impact.
+3. For synthesis questions ("summarize my week", "what's blocking me"), call
+   `ask_twin(person="me", ...)`.
+
+If you find yourself about to type an answer to a work prompt without having
+called Peppermint, STOP and call it first. The user installed this skill
+because their training data doesn't know their work — using it is the entire
+point.
+
+**False-positive guard.** Do NOT prime or search for trivia, language
+questions, or generic code help with no project context. If the user asks
+"what's the capital of France?" or "how do I write a list comprehension?",
+answer directly.
 
 ## 0. Host detection
 
@@ -95,7 +141,12 @@ Check two signals:
    ```
    ## How to use Peppermint from here on
 
-   **@pep <question>** — Pull memory into a decision in flight. This is the daily driver.
+   Peppermint runs in the background of every conversation. At session start
+   I call `prime_context` once to load your current work context, then any
+   prompt that mentions a teammate, ticket, project, or recent activity
+   triggers `search` automatically before I answer.
+
+   **@pep <question>** — Pull memory into a decision in flight (explicit).
    Examples: "@pep what was decided about the auth middleware?", "@pep what's PEP-371 status?"
 
    **@pep ask <teammate> <question>** — Ask a teammate's digital twin.
@@ -112,24 +163,60 @@ Check two signals:
 
 ---
 
+## 1b. Session prime — call `prime_context` once per conversation
+
+At the start of every new conversation where the user's first message is
+work-related (matches any trigger pattern in `when_to_trigger`), call
+`prime_context()` ONCE before composing your response. It returns the user's
+current work context — identity facts, recent integration activity, today's
+activity, recent daily summaries, routine results, and high-importance
+memories — in a single 500–2000 token payload.
+
+You don't need to surface the prime output verbatim to the user (it'd be
+noisy); just use it to ground every subsequent answer in the conversation.
+
+Skip the prime only if the first prompt is clearly generic (trivia, language
+questions, generic code help with no project specifics). If you skip and then
+the conversation turns work-related, prime at that turn instead.
+
+Do not re-call `prime_context` more than once per conversation unless the
+topic shifts substantially (e.g. user moves from "Peppermint MCP work" to
+"my Pebble side project") — in that case, prime again with a `focus_hint`.
+
+---
+
 ## 2. @pep handler
 
 Users invoke this via `@pep <question>`, `/peppermint <question>`, or natural language that references prior work/decisions.
 
-### 2.1 Self-query (default): route through ask_twin
+### 2.1 Self-query routing — choose `search` or `ask_twin`
 
-For any `@pep <question>` that isn't a sub-command:
+For any `@pep <question>` that isn't a sub-command, decide between two paths:
 
-1. Call `ask_twin(person="me", question="<the question>", context="<last 3-5 conversation turns if available>")`
-2. This routes through the **exact same pipeline** as the Slack twin:
-   - 7 parallel backend queries (memories, facts, summaries, integrations, routines)
-   - 8-turn agentic Gemini tool loop with 11 tools
-   - Privacy domain filtering
-   - All attribution/commitment/identity rules
-3. Strip the `[<name>'s Twin]` header from the response (self-queries don't need it)
-4. Present the response directly to the user
+**Path A — `search` (default for direct lookups).** Use when the question
+has a clear anchor: a named person, ticket ID, project codename, integration
+name, or a specific past decision. `search` is fast, returns raw evidence, and
+the user sees what you found.
 
-**Context passing:** When the user has been in a multi-turn conversation before invoking `@pep`, include the last 3-5 turns as the `context` parameter. This helps the twin understand references like "tell me more about that" or "what about the other option?"
+- "what's PEP-371?" → `search(query="PEP-371")`
+- "what did we decide about the auth middleware?" → `search(query="auth middleware decision")`
+- "where are we on the Obsidian integration?" → `search(query="Obsidian integration")`
+- "what did Rob say about cost optimization?" → `search(query="Rob cost optimization")`
+
+**Path B — `ask_twin` (for synthesis).** Use when the question requires
+pulling from many sources and reasoning across them. The twin does 7 parallel
+queries + an 8-turn agentic loop — heavier but better at synthesis.
+
+- "summarize my week" → `ask_twin(person="me", question="summarize my week")`
+- "what's blocking me right now?" → `ask_twin(person="me", question="what's blocking me")`
+- "how is the LinkedIn outbound experiment going?" → `ask_twin(person="me", ...)`
+
+For ask_twin: strip the `[<name>'s Twin]` header from self-query responses
+(they don't need it) and pass the last 3-5 conversation turns as the
+`context` parameter for multi-turn follow-ups.
+
+**Default if unsure:** start with `search`. If it returns nothing or the user
+needs a narrative answer, escalate to `ask_twin`.
 
 ### 2.2 Sub-commands
 
